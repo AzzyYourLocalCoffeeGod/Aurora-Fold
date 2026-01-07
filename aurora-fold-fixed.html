@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aurora Fold V25 - Das Ultimate Frankenphone</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background: #f8fafc; color: #020617; font-family: 'Inter', sans-serif; }
+        canvas { display: block; cursor: grab; }
+        canvas:active { cursor: grabbing; }
+        .glass-panel { background: rgba(8, 12, 20, 0.85); backdrop-filter: blur(25px); border: 1px solid rgba(255,255,255,0.08); }
+        input[type=range]::-webkit-slider-runnable-track { background: #1e293b; border-radius: 10px; height: 4px; }
+        input[type=range]::-webkit-slider-thumb { appearance: none; height: 18px; width: 18px; background: #3b82f6; border-radius: 50%; margin-top: -7px; cursor: pointer; border: 2px solid #0f172a; box-shadow: 0 0 15px rgba(59, 130, 246, 0.4); }
+    </style>
+</head>
+<body>
+
+    <div class="absolute inset-0 pointer-events-none flex flex-col justify-between p-6">
+        <div class="flex justify-between items-start">
+            <div class="glass-panel p-5 rounded-2xl pointer-events-auto border-l-4 border-blue-500">
+                <div class="flex items-center gap-3">
+                    <h1 class="text-xl font-black tracking-tighter text-white uppercase italic">Aurora <span class="text-blue-500">V26</span></h1>
+                </div>
+                <p class="text-[9px] uppercase tracking-[0.2em] text-slate-500 mt-1">Emerald Audio Frame • Sapphire Kickstands</p>
+            </div>
+
+            <div class="flex flex-col gap-2 items-end">
+                <div class="glass-panel p-4 rounded-xl pointer-events-auto text-right min-w-[150px]">
+                    <p class="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Device Status</p>
+                    <p id="dock-status" class="text-blue-400 font-mono text-xs uppercase">Mode: Workstation</p>
+                    <p id="cam-status" class="text-emerald-400 font-mono text-[10px] uppercase mt-1">Cam: Retracted</p>
+                    <p id="kick-status" class="text-purple-400 font-mono text-[10px] uppercase mt-1">Kickstands: Retracted</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex justify-center mb-4">
+            <div class="glass-panel p-6 rounded-3xl pointer-events-auto w-full max-w-xl space-y-6 shadow-2xl">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Hinge Articulation</span>
+                    <span id="angle-display" class="bg-blue-600/20 text-blue-400 px-3 py-1 rounded-md text-[10px] font-bold font-mono">0.0°</span>
+                </div>
+                <input type="range" id="foldControl" min="0" max="175" value="0" class="w-full appearance-none bg-transparent">
+                
+                <div class="grid grid-cols-2 md:grid-cols-7 gap-3">
+                    <button id="btn-flat" class="py-3 rounded-lg bg-slate-800/50 hover:bg-slate-700 text-[9px] font-bold transition-all uppercase tracking-widest">Tablet</button>
+                    <button id="btn-laptop" class="py-3 rounded-lg bg-slate-800/50 hover:bg-slate-700 text-[9px] font-bold transition-all uppercase tracking-widest">Laptop</button>
+                    <button id="btn-phone" class="py-3 rounded-lg bg-pink-600/80 hover:bg-pink-500 text-[9px] font-bold transition-all uppercase tracking-widest">Phone</button>
+                    <button id="btn-portable" class="py-3 rounded-lg bg-purple-600/80 hover:bg-purple-500 text-[9px] font-bold transition-all uppercase tracking-widest">Portable</button>
+                    <button id="btn-workstation" class="py-3 rounded-lg bg-cyan-600/80 hover:bg-cyan-500 text-[9px] font-bold transition-all uppercase tracking-widest">Workstation</button>
+                    <button id="btn-camera" class="py-3 rounded-lg bg-emerald-600/80 hover:bg-emerald-500 text-[9px] font-bold transition-all uppercase tracking-widest">Motor Cam</button>
+                    <button id="btn-kickstand" class="py-3 rounded-lg bg-orange-600/80 hover:bg-orange-500 text-[9px] font-bold transition-all uppercase tracking-widest">Kickstands</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let scene, camera, renderer, deviceRoot, keyboard;
+        let centerPanel, leftWing, rightWing, popupCam;
+        let leftKickstand, rightKickstand;
+        let targetRotX = 0.5, targetRotY = -0.6, zoom = 14;
+        let isCamActive = false;
+        let keyboardMode = 'workstation';
+        let kickstandsDeployed = false;
+        
+        const P_WIDTH = 3.2, P_HEIGHT = 5.4, P_THICK = 0.18;
+        const K_WIDTH = P_WIDTH, K_HEIGHT = P_HEIGHT, K_THICK = 0.15;
+        const BEZEL = 0.08; // 2-3mm speaker bezel
+
+        function createLabel(text, color = '#3b82f6') {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = 512; canvas.height = 128;
+            ctx.font = 'bold 44px Inter, sans-serif';
+            ctx.fillStyle = color;
+            ctx.textAlign = 'center';
+            ctx.fillText(text, 256, 80);
+            const texture = new THREE.CanvasTexture(canvas);
+            const mesh = new THREE.Mesh(
+                new THREE.PlaneGeometry(2.5, 0.6), 
+                new THREE.MeshBasicMaterial({ map: texture, transparent: true })
+            );
+            return mesh;
+        }
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0xf8fafc); // White background
+            scene.fog = new THREE.Fog(0xf8fafc, 10, 50);
+
+            camera = new THREE.PerspectiveCamera(35, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 0, zoom);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.shadowMap.enabled = true;
+            document.body.appendChild(renderer.domElement);
+
+            const ambient = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambient);
+            const light = new THREE.DirectionalLight(0xffffff, 1.2);
+            light.position.set(5, 10, 7);
+            scene.add(light);
+
+            deviceRoot = new THREE.Group();
+            scene.add(deviceRoot);
+
+            const titanMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.9, roughness: 0.15 });
+            const glassMat = new THREE.MeshStandardMaterial({ color: 0x020617, roughness: 0.05, metalness: 1.0, emissive: 0x0f172a });
+            const speakerMat = new THREE.MeshStandardMaterial({ color: 0x10b981, metalness: 0.7, roughness: 0.3, emissive: 0x065f46 }); // Emerald green with glow
+
+            // PANELS WITH SPEAKER BEZELS
+            centerPanel = createPanelWithBezels(titanMat, glassMat, speakerMat);
+            deviceRoot.add(centerPanel);
+            
+            // ORANGE VERTICAL HINGES on left and right edges of center panel
+            const orangeHingeMat = new THREE.MeshStandardMaterial({ 
+                color: 0xf97316, 
+                metalness: 0.8, 
+                roughness: 0.2,
+                emissive: 0xc2410c
+            });
+            
+            // Left vertical hinge (bigger - 0.15 radius)
+            const leftVerticalHinge = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.15, 0.15, P_HEIGHT, 16),
+                orangeHingeMat
+            );
+            leftVerticalHinge.position.set(-P_WIDTH/2, 0, 0);
+            centerPanel.add(leftVerticalHinge);
+            
+            // Right vertical hinge (smaller - 0.10 radius)
+            const rightVerticalHinge = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.10, 0.10, P_HEIGHT, 16),
+                orangeHingeMat
+            );
+            rightVerticalHinge.position.set(P_WIDTH/2, 0, 0);
+            centerPanel.add(rightVerticalHinge);
+
+            // KICKSTANDS - Triangular fold-out design in sapphire blue
+            const kickstandMat = new THREE.MeshStandardMaterial({ 
+                color: 0x3b82f6, 
+                metalness: 0.9, 
+                roughness: 0.2,
+                emissive: 0x1e40af
+            });
+            
+            leftKickstand = new THREE.Group();
+            leftKickstand.position.set(-P_WIDTH/3, -P_HEIGHT/4, -P_THICK/2);
+            centerPanel.add(leftKickstand);
+            
+            // Create triangular kickstand using BufferGeometry
+            const triangleShape = new THREE.Shape();
+            triangleShape.moveTo(0, 0);
+            triangleShape.lineTo(0.5, 0);
+            triangleShape.lineTo(0.5, 1.2);
+            triangleShape.lineTo(0, 0);
+            
+            const extrudeSettings = { depth: 0.08, bevelEnabled: false };
+            const triangleGeom = new THREE.ExtrudeGeometry(triangleShape, extrudeSettings);
+            const leftStand = new THREE.Mesh(triangleGeom, kickstandMat);
+            leftStand.rotation.y = Math.PI / 2;
+            leftStand.position.set(0.25, -0.6, -0.04);
+            leftKickstand.add(leftStand);
+            
+            rightKickstand = new THREE.Group();
+            rightKickstand.position.set(P_WIDTH/3, -P_HEIGHT/4, -P_THICK/2);
+            centerPanel.add(rightKickstand);
+            
+            const rightStand = new THREE.Mesh(triangleGeom, kickstandMat);
+            rightStand.rotation.y = Math.PI / 2;
+            rightStand.position.set(0.25, -0.6, -0.04);
+            rightKickstand.add(rightStand);
+
+            // Rear camera at top
+            const rearCamera = new THREE.Group();
+            rearCamera.position.set(0, P_HEIGHT/2 - 0.3, -P_THICK/2 - 0.05);
+            centerPanel.add(rearCamera);
+            
+            const camModule = new THREE.Mesh(
+                new THREE.BoxGeometry(0.4, 0.4, 0.08), 
+                new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.9 })
+            );
+            const camLens = new THREE.Mesh(
+                new THREE.CircleGeometry(0.12, 16), 
+                new THREE.MeshBasicMaterial({ color: 0x3b82f6 })
+            );
+            camLens.position.z = 0.05;
+            rearCamera.add(camModule);
+            rearCamera.add(camLens);
+            
+            // Wireless charging circle
+            const chargingCircle = new THREE.Mesh(
+                new THREE.RingGeometry(0.35, 0.4, 32),
+                new THREE.MeshBasicMaterial({ color: 0x10b981, side: THREE.DoubleSide })
+            );
+            chargingCircle.position.set(0, 0, -P_THICK/2 - 0.01);
+            chargingCircle.rotation.y = Math.PI;
+            centerPanel.add(chargingCircle);
+
+            // LEFT WING WITH BIGGER HINGE (phone screen routing)
+            const leftHinge = new THREE.Group();
+            leftHinge.position.set(-P_WIDTH/2, 0, 0); // Attached to left edge of center panel
+            centerPanel.add(leftHinge);
+            
+            leftWing = createPanelWithBezels(titanMat, glassMat, speakerMat);
+            leftWing.position.x = -P_WIDTH/2; // Offset from hinge center
+            leftHinge.add(leftWing);
+            
+            // Phone screen on back (small label positioned better)
+            const phoneScreen = new THREE.Mesh(
+                new THREE.PlaneGeometry(P_WIDTH - BEZEL*2 - 0.1, P_HEIGHT - BEZEL*2 - 0.1), 
+                glassMat
+            );
+            phoneScreen.position.z = -P_THICK/2 - 0.01;
+            phoneScreen.rotation.y = Math.PI;
+            leftWing.add(phoneScreen);
+
+            // RIGHT WING WITH SMALLER HINGE (just display connection)
+            const rightHinge = new THREE.Group();
+            rightHinge.position.set(P_WIDTH/2, 0, 0); // Attached to right edge of center panel
+            centerPanel.add(rightHinge);
+            
+            rightWing = createPanelWithBezels(titanMat, glassMat, speakerMat);
+            rightWing.position.x = P_WIDTH/2; // Offset from hinge center
+            rightHinge.add(rightWing);
+
+            // MOTORIZED FRONT CAMERA
+            popupCam = new THREE.Group();
+            popupCam.position.set(0, P_HEIGHT/2 - 0.15, 0.05); 
+            centerPanel.add(popupCam);
+            
+            const camBody = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.4, 0.12), titanMat);
+            const lens = new THREE.Mesh(new THREE.CircleGeometry(0.1, 16), new THREE.MeshBasicMaterial({color: 0x10b981}));
+            lens.position.z = 0.07;
+            popupCam.add(camBody);
+            popupCam.add(lens);
+
+            // KEYBOARD
+            keyboard = new THREE.Group();
+            scene.add(keyboard);
+            
+            const keyboardMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, metalness: 0.3, roughness: 0.7 });
+            const kBase = new THREE.Mesh(new THREE.BoxGeometry(K_WIDTH, K_HEIGHT, K_THICK), keyboardMat);
+            keyboard.add(kBase);
+            
+            // QWERTY texture
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 1024;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#f8fafc';
+            ctx.fillRect(0, 0, 512, 1024);
+            ctx.fillStyle = '#1e293b';
+            ctx.font = 'bold 24px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            
+            const rows = [
+                ['Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P'],
+                ['A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L'],
+                ['Z', 'X', 'C', 'V', 'B', 'N', 'M']
+            ];
+            
+            rows.forEach((row, rowIndex) => {
+                const xPos = 140 + rowIndex * 80;
+                const rowHeight = row.length * 90;
+                const startY = (1024 - rowHeight) / 2 + 45;
+                
+                row.forEach((letter, colIndex) => {
+                    const y = startY + colIndex * 90;
+                    ctx.fillStyle = '#1e293b';
+                    ctx.fillRect(xPos - 30, y - 35, 60, 70);
+                    ctx.fillStyle = '#f8fafc';
+                    ctx.fillText(letter, xPos, y);
+                });
+            });
+            
+            ctx.fillStyle = '#1e293b';
+            ctx.fillRect(380, 350, 70, 320);
+            
+            const texture = new THREE.CanvasTexture(canvas);
+            kBase.material.map = texture;
+            kBase.material.needsUpdate = true;
+
+            // STYLUS
+            const stylus = new THREE.Group();
+            stylus.position.set(P_WIDTH * 1.5, 0, 0.5);
+            deviceRoot.add(stylus);
+            
+            const stylusMat = new THREE.MeshStandardMaterial({ color: 0xdc2626, metalness: 0.8, roughness: 0.2 });
+            const penBody = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, P_HEIGHT * 0.95, 16), stylusMat);
+            stylus.add(penBody);
+            
+            const tipMat = new THREE.MeshStandardMaterial({ color: 0x7f1d1d, metalness: 0.9, roughness: 0.1 });
+            const penTip = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.25, 16), tipMat);
+            penTip.position.y = -(P_HEIGHT * 0.95) / 2 - 0.125;
+            stylus.add(penTip);
+            
+            const capMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 1.0, roughness: 0.1 });
+            const penCap = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.08, 0.3, 16), capMat);
+            penCap.position.y = (P_HEIGHT * 0.95) / 2 + 0.15;
+            stylus.add(penCap);
+
+            setupControls(leftHinge, rightHinge);
+            animate();
+        }
+
+        function createPanelWithBezels(frameMat, screenMat, speakerMat) {
+            const g = new THREE.Group();
+            
+            // Main frame
+            g.add(new THREE.Mesh(new THREE.BoxGeometry(P_WIDTH, P_HEIGHT, P_THICK), frameMat));
+            
+            // Screen (inset by bezel)
+            const scr = new THREE.Mesh(
+                new THREE.PlaneGeometry(P_WIDTH - BEZEL*2, P_HEIGHT - BEZEL*2), 
+                screenMat
+            );
+            scr.position.z = P_THICK/2 + 0.01;
+            g.add(scr);
+            
+            // Speaker bezel strips (all four sides)
+            const bezelThick = 0.02;
+            
+            // Top bezel
+            const topBezel = new THREE.Mesh(
+                new THREE.BoxGeometry(P_WIDTH, BEZEL, bezelThick),
+                speakerMat
+            );
+            topBezel.position.set(0, P_HEIGHT/2 - BEZEL/2, P_THICK/2 + bezelThick/2);
+            g.add(topBezel);
+            
+            // Bottom bezel
+            const bottomBezel = new THREE.Mesh(
+                new THREE.BoxGeometry(P_WIDTH, BEZEL, bezelThick),
+                speakerMat
+            );
+            bottomBezel.position.set(0, -P_HEIGHT/2 + BEZEL/2, P_THICK/2 + bezelThick/2);
+            g.add(bottomBezel);
+            
+            // Left bezel
+            const leftBezel = new THREE.Mesh(
+                new THREE.BoxGeometry(BEZEL, P_HEIGHT - BEZEL*2, bezelThick),
+                speakerMat
+            );
+            leftBezel.position.set(-P_WIDTH/2 + BEZEL/2, 0, P_THICK/2 + bezelThick/2);
+            g.add(leftBezel);
+            
+            // Right bezel
+            const rightBezel = new THREE.Mesh(
+                new THREE.BoxGeometry(BEZEL, P_HEIGHT - BEZEL*2, bezelThick),
+                speakerMat
+            );
+            rightBezel.position.set(P_WIDTH/2 - BEZEL/2, 0, P_THICK/2 + bezelThick/2);
+            g.add(rightBezel);
+            
+            return g;
+        }
+
+        function setupControls(lh, rh) {
+            const slider = document.getElementById('foldControl');
+            const display = document.getElementById('angle-display');
+            const dockLabel = document.getElementById('dock-status');
+            const camLabel = document.getElementById('cam-status');
+            const kickLabel = document.getElementById('kick-status');
+
+            const updateFold = (v) => {
+                const r = (v * Math.PI) / 180;
+                lh.rotation.y = r;
+                rh.rotation.y = -r;
+                display.innerText = v + ".0°";
+            };
+
+            slider.oninput = () => updateFold(slider.value);
+            document.getElementById('btn-flat').onclick = () => { slider.value = 0; updateFold(0); };
+            document.getElementById('btn-laptop').onclick = () => { slider.value = 90; updateFold(90); };
+            document.getElementById('btn-phone').onclick = () => { 
+                slider.value = 175; 
+                updateFold(175); 
+                keyboardMode = 'portable';
+                dockLabel.innerText = "Mode: Phone";
+            };
+            
+            document.getElementById('btn-portable').onclick = () => {
+                keyboardMode = 'portable';
+                dockLabel.innerText = "Mode: Portable";
+            };
+            
+            document.getElementById('btn-workstation').onclick = () => {
+                keyboardMode = 'workstation';
+                dockLabel.innerText = "Mode: Workstation";
+            };
+            
+            document.getElementById('btn-camera').onclick = () => {
+                isCamActive = !isCamActive;
+                camLabel.innerText = isCamActive ? "Cam: Active" : "Cam: Retracted";
+            };
+            
+            document.getElementById('btn-kickstand').onclick = () => {
+                kickstandsDeployed = !kickstandsDeployed;
+                kickLabel.innerText = kickstandsDeployed ? "Kickstands: Deployed" : "Kickstands: Retracted";
+            };
+
+            let dragging = false, px = 0, py = 0;
+            window.addEventListener('mousedown', () => dragging = true);
+            window.addEventListener('mouseup', () => dragging = false);
+            window.addEventListener('mousemove', (e) => {
+                if(dragging) {
+                    targetRotY += (e.clientX - px) * 0.01;
+                    targetRotX += (e.clientY - py) * 0.01;
+                }
+                px = e.clientX; py = e.clientY;
+            });
+            window.addEventListener('wheel', (e) => zoom = Math.max(5, Math.min(30, zoom + e.deltaY * 0.01)));
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            deviceRoot.rotation.x += (targetRotX - deviceRoot.rotation.x) * 0.1;
+            deviceRoot.rotation.y += (targetRotY - deviceRoot.rotation.y) * 0.1;
+            camera.position.z += (zoom - camera.position.z) * 0.1;
+
+            // Keyboard positioning
+            if (keyboardMode === 'portable') {
+                const targetWorldPos = new THREE.Vector3();
+                const targetWorldQuat = new THREE.Quaternion();
+                rightWing.updateMatrixWorld();
+                rightWing.matrixWorld.decompose(targetWorldPos, targetWorldQuat, new THREE.Vector3());
+
+                const backOffset = new THREE.Vector3(0, 0, -P_THICK/2 - K_THICK/2 - 0.01).applyQuaternion(targetWorldQuat);
+                targetWorldPos.add(backOffset);
+
+                const dockRotation = new THREE.Quaternion();
+                dockRotation.copy(targetWorldQuat);
+
+                keyboard.position.lerp(targetWorldPos, 0.15);
+                keyboard.quaternion.slerp(dockRotation, 0.15);
+                keyboard.scale.lerp(new THREE.Vector3(1, 1, 1), 0.15);
+            } else {
+                const homePos = new THREE.Vector3(0, -P_HEIGHT/2 - K_HEIGHT/2 - 0.05, P_THICK/2 + K_THICK/2 + 0.02);
+                homePos.applyMatrix4(deviceRoot.matrixWorld);
+                
+                const homeQuat = new THREE.Quaternion().copy(deviceRoot.quaternion);
+                const flatRot = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
+                const rightRot = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.PI / 2);
+                homeQuat.multiply(flatRot).multiply(rightRot);
+                
+                keyboard.position.lerp(homePos, 0.1);
+                keyboard.quaternion.slerp(homeQuat, 0.1);
+                keyboard.scale.lerp(new THREE.Vector3(1, 1, 1), 0.1);
+            }
+
+            // Camera popup
+            const camY = isCamActive ? (P_HEIGHT/2 + 0.25) : (P_HEIGHT/2 - 0.15);
+            popupCam.position.y += (camY - popupCam.position.y) * 0.1;
+
+            // Kickstand deployment (45° angle)
+            const kickAngle = kickstandsDeployed ? -Math.PI / 4 : 0;
+            leftKickstand.rotation.x += (kickAngle - leftKickstand.rotation.x) * 0.1;
+            rightKickstand.rotation.x += (kickAngle - rightKickstand.rotation.x) * 0.1;
+
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        window.onload = init;
+    </script>
+</body>
+</html>
