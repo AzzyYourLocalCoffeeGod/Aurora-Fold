@@ -1,5 +1,5 @@
 # Aurora-Fold
-Aurora Fold
+Aurora Fold ®™ (The Cedar Tree Company Inc. C9G 9408-0991 Quebec Inc)
 What phones were supposed to be in the 21st Century Techno Age. 
 Aurora Fold – Final Parts List (Prototype)
 1. Displays & Hinges
