@@ -65,6 +65,18 @@ Aurora Fold – Final Parts List (Prototype)
     * Price: $150–300 CAD
 * Misc: Flex cables, thermal pads, connectors, screws
     * Price: $50–100 CAD
+Cost Estimate for Speaker Strip / Bezel-Integrated Audio (Prototype Level)Based on current 2025–2026 sourcing (AliExpress, teardown parts, JLCPCB/PCBWays, foldable teardowns):Basic side-firing speaker modules (small drivers for bezels, 0.5–1W each, used in foldables/teardowns): $2–$8 per module on AliExpress (e.g., 8–12mm diameter, SMD/surface-mount types). For a full strip (top + bottom + sides, ~4–6 modules total): $10–$30 CAD total.
+Flexible/strip-style speakers (thin piezo or MEMS-based for curved/bezel use): $5–$15 per strip (AliExpress "flexible speaker module" or "thin piezo speaker array"). For foldable bezel routing: $15–$40 CAD for a full perimeter set.
+Hinge-integrated hardware (drivers + amps + waveguides housed in hinges):  Small micro-speakers (e.g., Knowles or AAC Acoustics types from teardowns): $3–$10 each (2–4 per hinge).  
+Amp chip/module (TPA3116D2 or similar tiny Class-D): $2–$5.  
+Flex cables/PCB for routing: $10–$30 (JLCPCB prototype).  
+Total per hinge: $20–$60 CAD. For both hinges: $40–$120 CAD.
+
+Full sound part cost (drivers, amps, flex routing, integration into bezels/hinges): $70–$200 CAD for a prototype (hobbyist sourcing). Mass production could drop to $20–$50 per unit (economies of scale, custom flex PCBs).
+
+These are rough 2025–2026 hobbyist prices (AliExpress, teardown spares, JLCPCB). Premium brands (Samsung/Huawei) pay more for tuned/custom drivers (AKG/Huawei Sound), but your approach (hinge-housed for "full best sound") is feasible on a budget.
+
+
 Prototype Total Estimate: $2,400–3,600 CAD (hobbyist sourcing, 2025 prices).
 Mass-production version could drop to $1,000–1,500 retail if we ever go there.
 This is the Aurora Fold — clean, compartmentalized, powerful, pocketable.
